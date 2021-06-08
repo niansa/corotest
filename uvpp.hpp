@@ -49,6 +49,13 @@ struct tcp {
         std::unique_ptr<const char> data;
         size_t bufsize;
         ssize_t nread;
+
+        bool error() {
+            return data == nullptr || bufsize <= 0;
+        }
+        bool is_broken() {
+            return nread < 0;
+        }
     };
 
     template <class T> void setDataMember(T &t) {

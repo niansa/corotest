@@ -14,12 +14,12 @@ async::result<void> test(uvpp::loop_service &s, const char *ip, int port) {
         auto data = co_await socket.recv();
         assert(data);
         std::clog << data->nread << std::endl;
-        // Check for general read error
-        if (data->data == nullptr || data->bufsize <= 0) {
+        // Check for general error
+        if (data->error()) {
             continue;
         }
-        // Check for closed connectioin
-        if (data->nread < 0) {
+        // Check for broken connection
+        if (data->is_broken()) {
             break;
         }
         // Make string
