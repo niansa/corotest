@@ -1,0 +1,6 @@
+[submodule "libasync"]
+	path = libasync
+	url = https://github.com/managarm/libasync.git
+[submodule "frigg"]
+	path = frigg
+	url = https://github.com/managarm/frigg.git
