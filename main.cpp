@@ -1,35 +1,41 @@
-#include <iostream>
 #include "uvpp.hpp"
+#include <iostream>
+#include <string>
+#include <string_view>
 using namespace std;
 
-
-async::result<void> udp_recv_test(uvasync::loop_service &s) {
-    uvasync::udp socket { s };
-    socket.bind(1234);
+async::result<void> test(uvpp::loop_service &s, const char *ip, int port) {
+    uvpp::tcp socket{s};
+    co_await socket.connect(ip, port);
+    co_await socket.send(std::string("Hello world!\n"));
     socket.recv_start();
     while (true) {
-        auto odgram = co_await socket.async_recv();
-        assert(odgram);
-        auto dgram = std::move(*odgram);
-        if (dgram.buffer == NULL || dgram.nread <= 0) {
+        // Read
+        auto data = co_await socket.recv();
+        assert(data);
+        std::clog << data->nread << std::endl;
+        // Check for general read error
+        if (data->data == nullptr || data->bufsize <= 0) {
             continue;
         }
-        std::cout << std::string_view {
-            dgram.buffer.get(),
-            // dont ask, not sure why either, I'll check in the
-            // morning
-            static_cast<std::string_view::size_type>(dgram.nread)
+        // Check for closed connectioin
+        if (data->nread < 0) {
+            break;
         }
-        << std::endl;
+        // Make string
+        auto dataStr = std::string_view{data->data.get(), data->nread};
+        // Print it
+        std::cout << dataStr << std::flush;
     }
 }
 
 int main() {
-    using namespace uvasync;
+    using namespace uvpp;
     async::run_queue rq;
     async::queue_scope qs{&rq};
     loop_service service;
 
-    async::detach(udp_recv_test(service));
+    async::detach(test(service, "127.0.0.1", 1234));
+    async::detach(test(service, "127.0.0.1", 1235));
     async::run_forever(rq.run_token(), loop_service_wrapper{service});
 }
