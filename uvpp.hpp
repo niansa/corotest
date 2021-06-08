@@ -1,7 +1,7 @@
 #include <async/basic.hpp>
+#include <async/mutex.hpp>
 #include <async/queue.hpp>
 #include <async/result.hpp>
-#include <async/mutex.hpp>
 #include <cstring>
 #include <frg/std_compat.hpp>
 #include <memory>
@@ -11,11 +11,10 @@
 #include <uv.h>
 
 namespace uvpp {
-struct loop_service {
+class loop_service {
+public:
     explicit loop_service(uv_loop_t *loop) : loop(loop) {}
     loop_service() : loop_service(uv_default_loop()) {}
-
-    void wait();
 
 private:
     struct loop_deleter {
@@ -27,40 +26,42 @@ private:
     std::unique_ptr<uv_loop_t, loop_deleter> loop;
 
     friend struct tcp;
+
+public:
+    void wait() { uv_run(loop.get(), UV_RUN_ONCE); }
 };
 
-void loop_service::wait() { uv_run(loop.get(), UV_RUN_ONCE); }
-
-struct loop_service_wrapper {
+class loop_service_wrapper {
+public:
     loop_service &sv;
     void wait() { sv.wait(); }
 };
 
-namespace {
+namespace helpers {
 void alloc_buffer(uv_handle_t *handle, size_t size, uv_buf_t *buf) {
     buf->base = static_cast<char *>(operator new(size));
     buf->len = size;
 }
-} // namespace
+} // namespace helpers
 
-struct tcp {
+class base {
+protected:
+    template <class T> void setDataMember(T &t) {
+        t.data = static_cast<void *>(this);
+    }
+};
+
+class tcp : base {
+public:
     // Basic stuff
     struct [[nodiscard]] received {
         std::unique_ptr<const char> data;
         size_t bufsize;
         ssize_t nread;
 
-        bool error() {
-            return data == nullptr || bufsize <= 0;
-        }
-        bool is_broken() {
-            return nread < 0;
-        }
+        bool error() { return data == nullptr || bufsize <= 0; }
+        bool is_broken() { return nread < 0; }
     };
-
-    template <class T> void setDataMember(T &t) {
-        t.data = static_cast<void *>(this);
-    }
 
     explicit tcp(loop_service &loop) {
         uv_tcp_init(loop.loop.get(), uv_tcp.get());
@@ -72,8 +73,8 @@ struct tcp {
         if (recv_started) {
             return;
         }
-        uv_read_start(reinterpret_cast<uv_stream_t *>(uv_tcp.get()), &alloc_buffer,
-                      &on_read);
+        uv_read_start(reinterpret_cast<uv_stream_t *>(uv_tcp.get()),
+                      &helpers::alloc_buffer, &on_read);
         recv_started = true;
     }
 
@@ -121,7 +122,7 @@ struct tcp {
     auto close() {
         recv_stop();
         closeLock.try_lock();
-        uv_close(reinterpret_cast<uv_handle_t*>(uv_tcp.get()), &on_close);
+        uv_close(reinterpret_cast<uv_handle_t *>(uv_tcp.get()), &on_close);
         return closeLock.async_lock();
     }
     ~tcp() { recv_stop(); }
@@ -132,7 +133,6 @@ private:
     bool recv_started = false;
 
     // Async queues
-
     async::queue<received, frg::stl_allocator> recvQueue;
     async::queue<int, frg::stl_allocator> sendQueue;
     async::queue<int, frg::stl_allocator> connectQueue;
@@ -157,7 +157,7 @@ private:
         delete handle;
     }
 
-    static void on_close(uv_handle_t* handle) {
+    static void on_close(uv_handle_t *handle) {
         auto self = static_cast<tcp *>(handle->data);
         self->closeLock.unlock();
     }
