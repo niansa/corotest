@@ -4,10 +4,11 @@
 #include <string_view>
 using namespace std;
 
+
 async::result<void> test(uvpp::loop_service &s, const char *ip, int port) {
     uvpp::tcp socket{s};
     co_await socket.connect(ip, port);
-    co_await socket.send(std::string("Hello world!\n"));
+    co_await socket.send(std::string_view("Hello world!\n"));
     socket.recv_start();
     while (true) {
         // Read
